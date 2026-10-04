@@ -19,12 +19,13 @@ async def lifespan(app: FastAPI):
         from modules.identity.models import Operator
         from modules.identity.auth import hash_password
         from modules.fleet.models import Drone, DroneFixedWing
-        from modules.reservations.models import AirspaceSector
+        from modules.reservations.models import AirspaceSector, TimeSlot
+        from datetime import datetime, timedelta
 
         Base.metadata.create_all(bind=engine)
         db = SessionLocal()
         try:
-            # 1. Seed demo operators if empty
+            # 1. Always update/seed demo operators with fresh bcrypt hash of 'pass123'
             demo_ops = [
                 ("Fleet Operator Alpha", "LIC-FLEET-001", "FLEET_OPERATOR", "pass123"),
                 ("Civil Aviation Regulator", "LIC-REG-001", "REGULATOR", "pass123"),
@@ -40,6 +41,8 @@ async def lifespan(app: FastAPI):
                         password_hash=hash_password(pw),
                     )
                     db.add(op)
+                else:
+                    op.password_hash = hash_password(pw)
             db.commit()
 
             # 2. Seed demo drones for FLEET_OPERATOR if empty
@@ -61,6 +64,17 @@ async def lifespan(app: FastAPI):
                 s1 = AirspaceSector(sector_name="SECTOR-ALPHA", min_lat=12.85, max_lat=13.10, min_lon=77.50, max_lon=77.75, floor_altitude_m=0, ceiling_altitude_m=120)
                 s2 = AirspaceSector(sector_name="SECTOR-BRAVO", min_lat=13.10, max_lat=13.35, min_lon=77.50, max_lon=77.75, floor_altitude_m=120, ceiling_altitude_m=250)
                 db.add_all([s1, s2])
+                db.commit()
+
+                # Seed initial time slots for demo sectors
+                sectors = db.query(AirspaceSector).all()
+                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+                for s in sectors:
+                    for i in range(12):
+                        st = now + timedelta(minutes=30 * i)
+                        et = st + timedelta(minutes=30)
+                        slot = TimeSlot(sector_id=s.sector_id, start_time=st, end_time=et)
+                        db.add(slot)
                 db.commit()
         finally:
             db.close()

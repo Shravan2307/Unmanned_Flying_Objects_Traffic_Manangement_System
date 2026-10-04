@@ -70,14 +70,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [operator, setOperator] = useState<OperatorProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(PROFILE_KEY);
-    setToken(null);
-    setUser(null);
-    setOperator(null);
-  }, []);
-
   // Fetch operator profile from backend
   const fetchProfile = useCallback(async (authToken: string) => {
     try {
@@ -90,43 +82,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         const data: OperatorProfile = await res.json();
         setOperator(data);
         localStorage.setItem(PROFILE_KEY, JSON.stringify(data));
-      } else if (res.status === 401 || res.status === 403) {
+      } else if (res.status === 401) {
+        // Token rejected by server
         logout();
       }
     } catch (err) {
       console.error("Error fetching operator profile:", err);
     }
-  }, [logout]);
+  }, []);
 
   // Restore session from localStorage on initial load
   useEffect(() => {
-    const initializeAuth = async () => {
-      const savedToken = localStorage.getItem(TOKEN_KEY);
-      const savedProfile = localStorage.getItem(PROFILE_KEY);
+    const savedToken = localStorage.getItem(TOKEN_KEY);
+    const savedProfile = localStorage.getItem(PROFILE_KEY);
 
-      if (savedToken) {
-        const decoded = decodeJwtPayload(savedToken);
-        if (decoded && !isTokenExpired(decoded)) {
-          setToken(savedToken);
-          setUser(decoded);
-          if (savedProfile) {
-            try {
-              setOperator(JSON.parse(savedProfile));
-            } catch {
-              await fetchProfile(savedToken);
-            }
-          } else {
-            await fetchProfile(savedToken);
+    if (savedToken) {
+      const decoded = decodeJwtPayload(savedToken);
+      if (decoded && !isTokenExpired(decoded)) {
+        setToken(savedToken);
+        setUser(decoded);
+        if (savedProfile) {
+          try {
+            setOperator(JSON.parse(savedProfile));
+          } catch {
+            // Profile corrupted, refetch
+            fetchProfile(savedToken);
           }
         } else {
-          localStorage.removeItem(TOKEN_KEY);
-          localStorage.removeItem(PROFILE_KEY);
+          fetchProfile(savedToken);
         }
+      } else {
+        // Token invalid or expired
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(PROFILE_KEY);
       }
-      setIsLoading(false);
-    };
-
-    initializeAuth();
+    }
+    setIsLoading(false);
   }, [fetchProfile]);
 
   const login = useCallback(
@@ -148,6 +139,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     },
     [fetchProfile]
   );
+
+  const logout = useCallback(() => {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(PROFILE_KEY);
+    setToken(null);
+    setUser(null);
+    setOperator(null);
+  }, []);
 
   const refreshProfile = useCallback(async () => {
     if (token) {

@@ -146,3 +146,4 @@ def world(db_session):
         "d_busy": d_busy,
         "d_other": d_other,
     }
+

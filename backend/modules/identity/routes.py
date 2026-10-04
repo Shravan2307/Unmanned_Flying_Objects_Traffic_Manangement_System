@@ -69,7 +69,7 @@ def register(payload: OperatorCreate, db: Session = Depends(get_db)):
     response_model=TokenResponse,
     summary="Operator login with rate limiting",
 )
-@limiter.limit("30/minute")
+@limiter.limit("5/minute")
 def login(request: Request, payload: OperatorLogin, db: Session = Depends(get_db)):
     operator = (
         db.query(Operator).filter(Operator.license_no == payload.license_no).first()
