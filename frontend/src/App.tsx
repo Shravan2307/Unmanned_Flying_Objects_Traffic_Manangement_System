@@ -6,6 +6,7 @@ import { AppLayout } from "./shared/components/Layout/AppLayout";
 import { AuthPage } from "./shared/pages/AuthPage";
 import { PlaceholderPage } from "./shared/components/PlaceholderPage";
 import { ReservationsPage } from "./reservations";
+import { FleetPage } from "./fleet";
 
 export const App: React.FC = () => {
   return (
@@ -41,16 +42,7 @@ export const App: React.FC = () => {
               path="/fleet"
               element={
                 <RequireRole roles={["FLEET_OPERATOR"]}>
-                  <PlaceholderPage
-                    title="Fleet Management"
-                    description="Registered UAV inventory, subtype telemetry specs (Fixed-Wing, Quadcopter, Emergency Medical), and status controls."
-                    owner="Fleet Module"
-                    endpoints={[
-                      "POST /api/drones",
-                      "GET /api/drones",
-                      "PATCH /api/drones/:id/status",
-                    ]}
-                  />
+                  <FleetPage />
                 </RequireRole>
               }
             />

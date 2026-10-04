@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
   Radio,
   Lock,
@@ -10,19 +10,25 @@ import {
   CheckCircle2,
   Loader2,
   ArrowRight,
+  Zap,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import type { OperatorRole } from "../types/auth";
 
 export const AuthPage: React.FC = () => {
   const [tab, setTab] = useState<"login" | "register">("login");
-  const { login } = useAuth();
+  const { login, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   // Determine redirect path after login
   const from = (location.state as { from?: { pathname?: string } })?.from
     ?.pathname || "/";
+
+  // If already authenticated, redirect to target page immediately
+  if (isAuthenticated && user) {
+    return <Navigate to={from} replace />;
+  }
 
   // Login form state
   const [loginLicense, setLoginLicense] = useState("");
@@ -39,8 +45,7 @@ export const AuthPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const performLogin = async (licenseNo: string, passwordStr: string) => {
     setError(null);
     setSuccess(null);
     setLoading(true);
@@ -50,14 +55,14 @@ export const AuthPage: React.FC = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          license_no: loginLicense.trim(),
-          password: loginPassword,
+          license_no: licenseNo.trim(),
+          password: passwordStr,
         }),
       });
 
       if (!res.ok) {
         if (res.status === 429) {
-          throw new Error("Rate limit exceeded: Please wait 1 minute before trying again.");
+          throw new Error("Rate limit exceeded: Please wait a moment before trying again.");
         }
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || "Invalid license number or password.");
@@ -75,6 +80,11 @@ export const AuthPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLoginSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    performLogin(loginLicense, loginPassword);
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -108,23 +118,7 @@ export const AuthPage: React.FC = () => {
       );
 
       // Automatically log the new operator in
-      const loginRes = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          license_no: regLicense.trim(),
-          password: regPassword,
-        }),
-      });
-
-      if (loginRes.ok) {
-        const loginData = await loginRes.json();
-        login(loginData.access_token, loginData.operator);
-        setTimeout(() => navigate("/", { replace: true }), 700);
-      } else {
-        setTab("login");
-        setLoginLicense(regLicense.trim());
-      }
+      await performLogin(regLicense.trim(), regPassword);
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
@@ -154,6 +148,54 @@ export const AuthPage: React.FC = () => {
           <p className="mt-1 text-xs uppercase tracking-widest text-slate-400">
             Unmanned Traffic Management Network
           </p>
+        </div>
+
+        {/* Quick Demo Login Preset Buttons */}
+        <div className="mb-4 rounded-xl border border-brand-500/30 bg-brand-500/5 p-3.5 backdrop-blur-md">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-brand-400 uppercase tracking-wider">
+              <Zap className="h-3.5 w-3.5" /> 1-Click Demo Logins
+            </span>
+            <span className="text-[10px] text-slate-400">Password: pass123</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                setLoginLicense("LIC-FLEET-001");
+                setLoginPassword("pass123");
+                performLogin("LIC-FLEET-001", "pass123");
+              }}
+              className="rounded-lg border border-brand-500/30 bg-utm-card py-2 text-[11px] font-medium text-slate-200 transition hover:bg-brand-500/20 hover:text-white disabled:opacity-50"
+            >
+              Fleet Operator
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                setLoginLicense("LIC-REG-001");
+                setLoginPassword("pass123");
+                performLogin("LIC-REG-001", "pass123");
+              }}
+              className="rounded-lg border border-purple-500/30 bg-utm-card py-2 text-[11px] font-medium text-purple-300 transition hover:bg-purple-500/20 hover:text-white disabled:opacity-50"
+            >
+              Regulator
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                setLoginLicense("LIC-DISP-001");
+                setLoginPassword("pass123");
+                performLogin("LIC-DISP-001", "pass123");
+              }}
+              className="rounded-lg border border-amber-500/30 bg-utm-card py-2 text-[11px] font-medium text-amber-300 transition hover:bg-amber-500/20 hover:text-white disabled:opacity-50"
+            >
+              Dispatcher
+            </button>
+          </div>
         </div>
 
         {/* Auth Card */}
@@ -207,11 +249,9 @@ export const AuthPage: React.FC = () => {
               </div>
             )}
 
-            {/* -------------------------------------------------------- */}
-            {/* Login Form                                               */}
-            {/* -------------------------------------------------------- */}
+            {/* Login Form */}
             {tab === "login" ? (
-              <form onSubmit={handleLogin} className="space-y-4">
+              <form onSubmit={handleLoginSubmit} className="space-y-4">
                 <div>
                   <label className="block text-xs font-medium text-slate-300">
                     License Number
@@ -265,9 +305,7 @@ export const AuthPage: React.FC = () => {
                 </button>
               </form>
             ) : (
-              /* -------------------------------------------------------- */
-              /* Register Form                                            */
-              /* -------------------------------------------------------- */
+              /* Register Form */
               <form onSubmit={handleRegister} className="space-y-4">
                 <div>
                   <label className="block text-xs font-medium text-slate-300">

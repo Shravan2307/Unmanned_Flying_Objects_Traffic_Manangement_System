@@ -23,7 +23,8 @@ JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key-change-me")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
-import bcrypt
+# Passlib bcrypt context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # HTTP Bearer security scheme
 security = HTTPBearer(auto_error=False)
@@ -33,19 +34,13 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 def hash_password(password: str) -> str:
-    """Hash plaintext password using bcrypt with 72-byte safe truncation."""
-    return bcrypt.hashpw(password.encode("utf-8")[:72], bcrypt.gensalt()).decode("utf-8")
+    """Hash plaintext password using bcrypt."""
+    return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify plaintext password against bcrypt hash safely."""
-    try:
-        return bcrypt.checkpw(
-            plain_password.encode("utf-8")[:72],
-            hashed_password.encode("utf-8"),
-        )
-    except Exception:
-        return False
+    """Verify plaintext password against bcrypt hash."""
+    return pwd_context.verify(plain_password, hashed_password)
 
 
 def create_access_token(
