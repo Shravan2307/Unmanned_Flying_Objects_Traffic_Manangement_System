@@ -1,5 +1,4 @@
 import os
-import bcrypt
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -8,6 +7,7 @@ from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
+from passlib.context import CryptContext
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
@@ -23,6 +23,9 @@ JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key-change-me")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
+# Passlib bcrypt context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 # HTTP Bearer security scheme
 security = HTTPBearer(auto_error=False)
 
@@ -31,29 +34,13 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 def hash_password(password: str) -> str:
-    """
-    Hash plaintext password using direct bcrypt with safe 72-byte truncation.
-    Bypasses passlib Python 3.14 incompatibility issues.
-    """
-    pwd_bytes = password.encode("utf-8")[:72]
-    salt = bcrypt.gensalt()
-    return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
+    """Hash plaintext password using bcrypt."""
+    return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """
-    Verify plaintext password against bcrypt hash safely.
-    Handles standard bcrypt hashes ($2b$, $2a$, $2y$) without passlib errors.
-    """
-    try:
-        if not hashed_password or not plain_password:
-            return False
-        pwd_bytes = plain_password.encode("utf-8")[:72]
-        hash_bytes = hashed_password.encode("utf-8")
-        return bcrypt.checkpw(pwd_bytes, hash_bytes)
-    except Exception as exc:
-        print(f"[Auth Error] Password verification exception: {exc}")
-        return False
+    """Verify plaintext password against bcrypt hash."""
+    return pwd_context.verify(plain_password, hashed_password)
 
 
 def create_access_token(
@@ -81,6 +68,21 @@ def create_access_token(
 def requireRole(*roles: str):
     """
     Reusable FastAPI dependency to authenticate JWT and enforce role-based access.
+
+    Usage:
+        @router.get("/protected")
+        def endpoint(current_operator: Operator = Depends(requireRole("REGULATOR"))):
+            ...
+
+        # Or multiple allowed roles:
+        @router.get("/multi")
+        def endpoint(current_operator: Operator = Depends(requireRole("FLEET_OPERATOR", "DISPATCHER"))):
+            ...
+
+        # Or any authenticated operator:
+        @router.get("/me")
+        def endpoint(current_operator: Operator = Depends(requireRole())):
+            ...
     """
 
     def role_dependency(

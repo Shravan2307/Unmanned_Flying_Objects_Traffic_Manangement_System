@@ -41,10 +41,10 @@ def register(payload: OperatorCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Operator with license number '{payload.license_no}' already exists.",
+            detail=f"Operator with license number '{payload.license_no}' already exists. Please choose a different license number or sign in.",
         )
 
-    # Validate role (schema already validates Literal, but double check against table CHECK constraint)
+    # Validate role
     valid_roles = {"FLEET_OPERATOR", "REGULATOR", "DISPATCHER"}
     if payload.role not in valid_roles:
         raise HTTPException(
@@ -52,16 +52,23 @@ def register(payload: OperatorCreate, db: Session = Depends(get_db)):
             detail=f"Invalid role '{payload.role}'. Must be one of {', '.join(valid_roles)}.",
         )
 
-    operator = Operator(
-        name=payload.name,
-        license_no=payload.license_no,
-        role=payload.role,
-        password_hash=hash_password(payload.password),
-    )
-    db.add(operator)
-    db.commit()
-    db.refresh(operator)
-    return operator
+    try:
+        operator = Operator(
+            name=payload.name,
+            license_no=payload.license_no,
+            role=payload.role,
+            password_hash=hash_password(payload.password),
+        )
+        db.add(operator)
+        db.commit()
+        db.refresh(operator)
+        return operator
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Could not register operator: {str(exc)}",
+        )
 
 
 @auth_router.post(
@@ -69,7 +76,7 @@ def register(payload: OperatorCreate, db: Session = Depends(get_db)):
     response_model=TokenResponse,
     summary="Operator login with rate limiting",
 )
-@limiter.limit("5/minute")
+@limiter.limit("30/minute")
 def login(request: Request, payload: OperatorLogin, db: Session = Depends(get_db)):
     operator = (
         db.query(Operator).filter(Operator.license_no == payload.license_no).first()
